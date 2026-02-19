@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Raumbelegungsplan</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .booking-card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 100%; max-width: 650px; margin-bottom: 30px; }
+        
+        /* Navigation */
+        .room-nav { display: flex; gap: 10px; margin-bottom: 20px; }
+        .room-nav button { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; cursor: pointer; font-weight: bold; background: #f8f9fa; }
+        .room-nav button.active { background: #1a73e8; color: white; border-color: #1a73e8; }
+
+        .section-title { font-weight: bold; margin: 15px 0 10px 0; color: #333; border-bottom: 2px solid #1a73e8; display: block; width: 100%; }
+        
+        .slot-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
+        .slot { padding: 12px; border: 2px solid #1a73e8; border-radius: 8px; text-align: center; cursor: pointer; font-size: 0.9em; font-weight: bold; color: #1a73e8; }
+        .slot.selected { background: #1a73e8; color: white; }
+
+        input, select { width: 100%; padding: 10px; margin: 5px 0 15px 0; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; }
+        .btn-confirm { width: 100%; padding: 15px; background: #34a853; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        .btn-confirm:disabled { background: #ccc; }
+
+        /* NEU: Das Dashboard / Die Boxen */
+        .dashboard { width: 100%; max-width: 800px; display: flex; flex-direction: column; gap: 20px; }
+        .day-container { background: #fff; padding: 20px; border-radius: 15px; border: 1px solid #ddd; }
+        .grid-view { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
+        
+        .time-box { background: #fdfdfd; border: 1px solid #e0e0e0; border-radius: 10px; padding: 10px; min-height: 100px; }
+        .time-box h4 { margin: 0 0 10px 0; color: #1a73e8; border-bottom: 1px solid #eee; padding-bottom: 5px; font-size: 0.9em; }
+        
+        .person-tag { font-size: 0.85em; padding: 4px 8px; margin: 4px 0; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
+        .bg-nutzer { background: #e8f0fe; color: #1a73e8; }
+        .bg-aufsicht { background: #fff3e0; color: #ef6c00; font-weight: bold; border-left: 3px solid #ef6c00; }
+        
+        .empty-text { color: #ccc; font-size: 0.8em; font-style: italic; }
+        .count-info { float: right; font-size: 0.7em; color: #666; font-weight: normal; }
+    </style>
+</head>
+<body>
+
+<div class="booking-card">
+    <h2 style="text-align:center;">Platz buchen</h2>
+    
+    <div class="room-nav">
+        <button id="navA" class="active" onclick="changeRoom('10m Stand')">10m Stand</button>
+        <button id="navB" onclick="changeRoom('25m Stand')">25m Stand</button>
+    </div>
+
+    <input type="text" id="userName" placeholder="Dein Name" oninput="checkForm()">
+    
+    <select id="userRole" onchange="checkForm()">
+        <option value="" disabled selected>Dein Status...</option>
+        <option value="Nutzer">Nutzer</option>
+        <option value="Aufsicht">Aufsicht</option>
+    </select>
+
+    <div class="slot-grid" id="all-slots">
+        </div>
+
+    <button id="submitBtn" class="btn-confirm" disabled onclick="saveBooking()">Reservierung abschließen</button>
+    <button onclick="clearData()" style="margin-top:10px; background:none; border:none; color:red; cursor:pointer; font-size:0.8em;">Daten löschen (Reset)</button>
+</div>
+
+<div class="dashboard">
+    <h2 id="viewTitle">Belegungsplan: 10m Stand</h2>
+    
+    <div class="day-container">
+        <h3 class="section-title">Montag</h3>
+        <div class="grid-view" id="grid-monday"></div>
+    </div>
+
+    <div class="day-container">
+        <h3 class="section-title">Mittwoch</h3>
+        <div class="grid-view" id="grid-wednesday"></div>
+    </div>
+</div>
+
+<script>
+    let currentRoom = "10m Stand";
+    let selectedTime = "";
+    const times = ["17-18 Uhr", "18-19 Uhr", "19-20 Uhr"];
+    const days = ["Montag", "Mittwoch"];
+    
+    let bookings = JSON.parse(localStorage.getItem('roomBookings')) || [];
+
+    // Initialisierung
+    renderSlots();
+    updateDashboard();
+
+    function renderSlots() {
+        const container = document.getElementById('all-slots');
+        container.innerHTML = "";
+        days.forEach(day => {
+            container.innerHTML += `<div style="grid-column: 1 / -1; font-size:0.8em; margin-top:10px; color:#666">${day}</div>`;
+            times.forEach(t => {
+                const timeID = `${day.substring(0,2)} ${t}`;
+                container.innerHTML += `<div class="slot" onclick="selectSlot('${timeID}', this)">${t}</div>`;
+            });
+        });
+    }
+
+    function changeRoom(name) {
+        currentRoom = name;
+        document.querySelectorAll('.room-nav button').forEach(b => b.classList.remove('active'));
+        event.target.classList.add('active');
+        document.getElementById('viewTitle').innerText = "Belegungsplan: " + name;
+        updateDashboard();
+    }
+
+    function selectSlot(timeStr, element) {
+        selectedTime = timeStr;
+        document.querySelectorAll('.slot').forEach(s => s.classList.remove('selected'));
+        element.classList.add('selected');
+        checkForm();
+    }
+
+    function checkForm() {
+        const name = document.getElementById('userName').value;
+        const role = document.getElementById('userRole').value;
+        document.getElementById('submitBtn').disabled = !(name.length > 2 && selectedTime !== "" && role !== "");
+    }
+
+    function saveBooking() {
+        const name = document.getElementById('userName').value;
+        const role = document.getElementById('userRole').value;
+
+        // Max 6 Plätze Check
+        const count = bookings.filter(b => b.room === currentRoom && b.time === selectedTime).length;
+        if(count >= 6) { alert("Voll!, Bitte andere Zeit buchen"); return; }
+
+        bookings.push({ room: currentRoom, name: name, role: role, time: selectedTime });
+        localStorage.setItem('roomBookings', JSON.stringify(bookings));
+        updateDashboard();
+    }
+
+    function updateDashboard() {
+        const drawGrid = (dayFull, elementId) => {
+            const grid = document.getElementById(elementId);
+            grid.innerHTML = "";
+            
+            times.forEach(t => {
+                const timeID = `${dayFull.substring(0,2)} ${t}`;
+                const people = bookings.filter(b => b.room === currentRoom && b.time === timeID);
+                
+                let html = `<div class="time-box">
+                    <h4>${t} <span class="count-info">${people.length}/6</span></h4>`;
+                
+                if(people.length === 0) {
+                    html += `<p class="empty-text">Noch niemand da</p>`;
+                } else {
+                    people.forEach(p => {
+                        const css = p.role === 'Aufsicht' ? 'bg-aufsicht' : 'bg-nutzer';
+                        html += `<div class="person-tag ${css}">${p.name} <span>${p.role === 'Aufsicht' ? '★' : ''}</span></div>`;
+                    });
+                }
+                html += `</div>`;
+                grid.innerHTML += html;
+            });
+        };
+
+        drawGrid("Montag", "grid-monday");
+        drawGrid("Mittwoch", "grid-wednesday");
+    }
+
+    function clearData() {
+        if(confirm("Alle Buchungen löschen?")) {
+            localStorage.clear();
+            bookings = [];
+            updateDashboard();
+        }
+    }
+</script>
+
+</body>
+</html>
